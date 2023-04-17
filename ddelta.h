@@ -62,9 +62,6 @@ enum ddelta_error {
  * Generates a diff from the files in oldfd and newfd in patchfd.
  *
  * The old and new files must be seekable.
- *
- * All files will be closed after the call, if you want to keep them
- * open, you must pass a dup()ed file descritopr.
  */
 int ddelta_generate(int oldfd, int newfd, int patchfd);
 
