@@ -26,6 +26,7 @@
 
 #include "ddelta.h"
 
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -177,6 +178,7 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, FILE 
 #ifndef DDELTA_NO_MAIN
 int main(int argc, char *argv[])
 {
+    int ret;
     FILE *old;
     FILE *new;
     FILE *patch;
@@ -184,6 +186,7 @@ int main(int argc, char *argv[])
 
     if (argc != 4) {
         fprintf(stderr, "usage: %s oldfile newfile patchfile\n", argv[0]);
+        return 1;
     }
 
     old = fopen(argv[1], "rb");
@@ -197,10 +200,13 @@ int main(int argc, char *argv[])
     if (patch == NULL)
         return perror("Cannot open patch"), 1;
 
-    if (ddelta_header_read(&header, patch) < 0)
-        return fprintf(stderr, "Not a ddelta file"), 1;
+    ret = ddelta_header_read(&header, patch);
+    if (ret < 0)
+        return fprintf(stderr, "Not a ddelta file: %d(%d)", ret, errno), 1;
 
-    printf("Result: %d\n", ddelta_apply(&header, patch, old, new));
+    ret = ddelta_apply(&header, patch, old, new);
+    if (ret < 0)
+        return fprintf(stderr, "Cannot apply patch: %d(%d)\n", ret, errno), 1;
 
     return 0;
 }
