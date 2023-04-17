@@ -107,7 +107,7 @@ static off_t matchlen(unsigned char *old, off_t oldsize, unsigned char *new,
     return i;
 }
 
-/* This is a binary search of the string |new_buf| of size |newsize| (or a
+/* This is a binary search of the string |new| of size |newsize| (or a
  * prefix of it) in the |old| string with size |oldsize| using the suffix array
  * |I|. |st| and |en| is the start and end of the search range (inclusive).
  * Returns the length of the longest prefix found and stores the position of the
