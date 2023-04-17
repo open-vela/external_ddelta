@@ -75,8 +75,8 @@ int ddelta_header_read(struct ddelta_header *header, FILE *file)
     return 0;
 }
 
-int ddelta_entry_header_read(struct ddelta_entry_header *entry,
-                             FILE *file)
+static int ddelta_entry_header_read(struct ddelta_entry_header *entry,
+                                    FILE *file)
 {
     if (fread(entry, sizeof(*entry), 1, file) < 1)
         return -DDELTA_EPATCHIO;
