@@ -40,6 +40,22 @@
 #define DDELTA_BLOCK_SIZE (32 * 1024)
 #endif
 
+static uint32_t ddelta_be32toh(uint32_t be32)
+{
+#if defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    return __builtin_bswap32(be32);
+#elif defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    return be32;
+#else
+    unsigned char *buf = (unsigned char *) &be32;
+
+    return (uint32_t) buf[0] << 24 |
+           (uint32_t) buf[1] << 16 |
+           (uint32_t) buf[2] << 8 |
+           (uint32_t) buf[3] << 0;
+#endif
+}
+
 static uint64_t ddelta_be64toh(uint64_t be64)
 {
 #if defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -60,9 +76,9 @@ static uint64_t ddelta_be64toh(uint64_t be64)
 #endif
 }
 
-static int64_t ddelta_from_unsigned(uint64_t u)
+static int32_t ddelta_from_unsigned(uint32_t u)
 {
-    return u & 0x80000000 ? -(int64_t) ~(u - 1) : (int64_t) u;
+    return u & 0x80000000 ? -(int32_t) ~(u - 1) : (int32_t) u;
 }
 
 int ddelta_header_read(struct ddelta_header *header, FILE *file)
@@ -82,13 +98,13 @@ static int ddelta_entry_header_read(struct ddelta_entry_header *entry,
     if (fread(entry, sizeof(*entry), 1, file) < 1)
         return -DDELTA_EPATCHIO;
 
-    entry->diff = ddelta_be64toh(entry->diff);
-    entry->extra = ddelta_be64toh(entry->extra);
-    entry->seek.value = ddelta_from_unsigned(ddelta_be64toh(entry->seek.raw));
+    entry->diff = ddelta_be32toh(entry->diff);
+    entry->extra = ddelta_be32toh(entry->extra);
+    entry->seek.value = ddelta_from_unsigned(ddelta_be32toh(entry->seek.raw));
     return 0;
 }
 
-static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint64_t size)
+static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint32_t size)
 {
 #ifdef __GNUC__
     typedef unsigned char uchar_vector __attribute__((vector_size(16)));
@@ -101,8 +117,8 @@ static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint64_t size)
     /* Apply the diff */
     while (size > 0) {
         unsigned int i;
-        const uint64_t toread = MIN(sizeof(old), size);
-        const uint64_t items_to_add = MIN(sizeof(uchar_vector) + toread,
+        const uint32_t toread = MIN(sizeof(old), size);
+        const uint32_t items_to_add = MIN(sizeof(uchar_vector) + toread,
                                           sizeof(old)) /
                                       sizeof(uchar_vector);
 
@@ -123,11 +139,11 @@ static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint64_t size)
     return 0;
 }
 
-static int copy_bytes(FILE *a, FILE *b, uint64_t bytes)
+static int copy_bytes(FILE *a, FILE *b, uint32_t bytes)
 {
     char buf[DDELTA_BLOCK_SIZE];
     while (bytes > 0) {
-        uint64_t toread = MIN(sizeof(buf), bytes);
+        uint32_t toread = MIN(sizeof(buf), bytes);
 
         if (fread(&buf, toread, 1, a) < 1)
             return -DDELTA_EPATCHIO;

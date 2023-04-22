@@ -44,6 +44,25 @@
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #endif
 
+static uint32_t ddelta_htobe32(uint32_t host)
+{
+#if defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    return __builtin_bswap32(host);
+#elif defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    return host;
+#else
+    uint32_t be32;
+    unsigned char *buf = &be32;
+
+    buf[0] = (host >> 24) & 0xFF;
+    buf[1] = (host >> 16) & 0xFF;
+    buf[2] = (host >> 8) & 0xFF;
+    buf[3] = (host >> 0) & 0xFF;
+
+    return be32;
+#endif
+}
+
 static uint64_t ddelta_htobe64(uint64_t host)
 {
 #if defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -67,9 +86,9 @@ static uint64_t ddelta_htobe64(uint64_t host)
 #endif
 }
 
-static uint64_t ddelta_to_unsigned(int64_t i)
+static uint32_t ddelta_to_unsigned(int32_t i)
 {
-    return i >= 0 ? (uint64_t) i : ~(uint64_t)(-i) + 1;
+    return i >= 0 ? (uint32_t) i : ~(uint32_t)(-i) + 1;
 }
 
 static int ddelta_header_write(struct ddelta_header *header, FILE *file)
@@ -85,9 +104,9 @@ static int ddelta_header_write(struct ddelta_header *header, FILE *file)
 static int ddelta_entry_header_write(struct ddelta_entry_header *entry,
                                      FILE *file)
 {
-    entry->diff = ddelta_htobe64(entry->diff);
-    entry->extra = ddelta_htobe64(entry->extra);
-    entry->seek.raw = ddelta_htobe64(ddelta_to_unsigned(entry->seek.value));
+    entry->diff = ddelta_htobe32(entry->diff);
+    entry->extra = ddelta_htobe32(entry->extra);
+    entry->seek.raw = ddelta_htobe32(ddelta_to_unsigned(entry->seek.value));
 
     if (fwrite(entry, sizeof(*entry), 1, file) < 1)
         return -DDELTA_EPATCHIO;
@@ -312,9 +331,16 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
                 goto out;
             }
 
-            header.diff = (uint64_t) lenf;
-            header.extra = (uint64_t)((scan - lenb) - (lastscan + lenf));
+            header.diff = (uint32_t) lenf;
+            header.extra = (uint32_t)((scan - lenb) - (lastscan + lenf));
             header.seek.value = (pos - lenb) - (lastpos + lenf);
+
+            if (header.diff != lenf ||
+                header.extra != (scan - lenb) - (lastscan + lenf) ||
+                header.seek.value != (pos - lenb) - (lastpos + lenf)) {
+                result = -DDELTA_EALGO;
+                goto out;
+            }
 
             if ((result = ddelta_entry_header_write(&header, pf)) < 0)
                 goto out;
