@@ -60,9 +60,9 @@ The ddelta patch format consists of a header:
 followed by a stream of entries, which each consist of a header followed by
 the diff data and the extra data associated with the file:
 
-    uint64_t diff;
-    uint64_t extra;
-    int64_t seek;
+    uint32_t diff;
+    uint32_t extra;
+    int32_t seek;
 
     unsigned char diffdata[diff];
     unsigned char extradata[extra];
