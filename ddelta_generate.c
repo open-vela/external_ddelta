@@ -220,7 +220,7 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
     }
 
     /* Create the patch file */
-    if ((pf = fdopen(patchfd, "w")) == NULL) {
+    if ((pf = fdopen(patchfd, "wb")) == NULL) {
         result = -DDELTA_EPATCHIO;
         goto out;
     }

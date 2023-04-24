@@ -40,7 +40,7 @@ typedef int ddelta_assert_entry_header_size[sizeof(struct ddelta_entry_header) =
 /**
  * Error codes to be returned by ddelta functions.
  *
- * Each function returns a negated variant of these error code on success, and for the
+ * Each function returns a negated variant of these error code on error, and for the
  * I/O errors, more information is available in errno.
  */
 enum ddelta_error {
