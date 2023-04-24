@@ -250,8 +250,8 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
             prev_oldscore = oldscore;
             prev_pos = pos;
 
-            len = search(I, old, oldsize - 1, new + scan, newsize - scan,
-                         0, oldsize, &pos);
+            len = search(I, old, oldsize, new + scan, newsize - scan,
+                         0, oldsize - 1, &pos);
 
             for (; scsc < scan + len; scsc++)
                 if ((scsc + lastoffset < oldsize) &&
