@@ -30,6 +30,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
+#include <sys/stat.h>
+#include <zlib.h>
 
 #ifndef MIN
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
@@ -104,7 +107,7 @@ static int ddelta_entry_header_read(struct ddelta_entry_header *entry,
     return 0;
 }
 
-static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint32_t size)
+static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint32_t size, uint32_t *oldcrc)
 {
 #ifdef __GNUC__
     typedef unsigned char uchar_vector __attribute__((vector_size(16)));
@@ -127,6 +130,7 @@ static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint32_t size)
         if (fread(&old, 1, toread, oldfd) < toread)
             return -DDELTA_EOLDIO;
 
+        *oldcrc = crc32(*oldcrc, (const unsigned char *)old, toread);
         for (i = 0; i < items_to_add; i++)
             old[i] += patch[i];
 
@@ -155,25 +159,100 @@ static int copy_bytes(FILE *a, FILE *b, uint32_t bytes)
     return 0;
 }
 
+static int copy_file(const char *a, FILE *b, off_t start, off_t end)
+{
+    off_t origin = ftell(b);
+    FILE *af;
+    int err;
+
+    if (fseek(b, start, SEEK_SET) < 0)
+        return -DDELTA_EOLDIO;
+
+    af = fopen(a, "rb");
+    if (af == NULL)
+        return -DDELTA_ENEWIO;
+
+    err = copy_bytes(af, b, end - start);
+    fclose(af);
+    if (err < 0)
+        return err;
+
+    if (fflush(b) < 0 || fsync(fileno(b)) < 0)
+        return -DDELTA_EOLDIO;
+
+    if (fseek(b, origin, SEEK_SET) < 0)
+        return -DDELTA_EOLDIO;
+
+    return 0;
+}
+
 /**
  * Apply a ddelta_apply in patchfd to oldfd, writing to newfd.
  *
  * The oldfd must be seekable, the patchfd and newfd are read/written
  * sequentially.
  */
-int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, FILE *newfd)
+int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const char *new)
 {
     struct ddelta_entry_header entry;
+    struct stat st;
+    char tmpname[PATH_MAX];
+    uint32_t oldcrc = 0;
+    FILE *tmpfd;
+    FILE *newfd;
     int err;
     uint64_t bytes_written = 0;
+
+    if (stat(new, &st) >= 0 && S_ISDIR(st.st_mode)) {
+        snprintf(tmpname, sizeof(tmpname), "%s/%s", new, "ddelta.tmp");
+        newfd = tmpfd = fopen(tmpname, "wb");
+    } else {
+        newfd = fopen(new, "wb");
+        tmpfd = NULL;
+    }
+
+    if (newfd == NULL)
+        return -DDELTA_ENEWIO;
 
     while (ddelta_entry_header_read(&entry, patchfd) == 0) {
         if (entry.diff == 0 && entry.extra == 0 && entry.seek.value == 0) {
             fflush(newfd);
+            fsync(fileno(newfd));
             return bytes_written == header->new_file_size ? 0 : -DDELTA_EPATCHSHORT;
         }
 
-        if ((err = apply_diff(patchfd, oldfd, newfd, entry.diff)) < 0)
+        if (entry.seek.value == DDELTA_FLUSH) {
+            char bakname[PATH_MAX];
+            off_t start;
+
+            if (tmpfd == NULL)
+                continue;
+
+            start = bytes_written - ftell(tmpfd);
+
+            fflush(tmpfd);
+            fsync(fileno(tmpfd));
+            fclose(tmpfd);
+
+            snprintf(bakname, sizeof(bakname), "%s/%" PRIu32 ".tmp", new, entry.newcrc);
+            if (oldcrc == entry.oldcrc) {
+                unlink(bakname);
+                if (rename(tmpname, bakname) < 0)
+                    return -DDELTA_ENEWIO;
+            }
+
+            copy_file(bakname, oldfd, start, bytes_written);
+
+            unlink(tmpname);
+            newfd = tmpfd = fopen(tmpname, "wb");
+            if (newfd == NULL)
+                return -DDELTA_ENEWIO;
+
+            oldcrc = 0;
+            continue;
+        }
+
+        if ((err = apply_diff(patchfd, oldfd, newfd, entry.diff, &oldcrc)) < 0)
             return err;
 
         /* Copy the bytes over */
@@ -196,23 +275,19 @@ int main(int argc, char *argv[])
 {
     int ret;
     FILE *old;
-    FILE *new;
     FILE *patch;
     struct ddelta_header header;
 
     if (argc != 4) {
-        fprintf(stderr, "usage: %s oldfile newfile patchfile\n", argv[0]);
+        fprintf(stderr, "usage: %s oldfile newfile|tmpdir patchfile\n", argv[0]);
         return 1;
     }
 
-    old = fopen(argv[1], "rb");
-    new = fopen(argv[2], "wb");
+    old = fopen(argv[1], "r+b");
     patch = fopen(argv[3], "rb");
 
     if (old == NULL)
         return perror("Cannot open old"), 1;
-    if (new == NULL)
-        return perror("Cannot open new"), 1;
     if (patch == NULL)
         return perror("Cannot open patch"), 1;
 
@@ -220,7 +295,7 @@ int main(int argc, char *argv[])
     if (ret < 0)
         return fprintf(stderr, "Not a ddelta file: %d(%d)", ret, errno), 1;
 
-    ret = ddelta_apply(&header, patch, old, new);
+    ret = ddelta_apply(&header, patch, old, argv[2]);
     if (ret < 0)
         return fprintf(stderr, "Cannot apply patch: %d(%d)\n", ret, errno), 1;
 
