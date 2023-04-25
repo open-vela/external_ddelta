@@ -37,11 +37,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include <divsufsort.h>
 
 #ifndef MIN
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
+#endif
+
+#ifndef MAX
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #endif
 
 static uint32_t ddelta_htobe32(uint32_t host)
@@ -173,14 +178,15 @@ static off_t read_file(int fd, unsigned char **buf)
     return size;
 }
 
-int ddelta_generate(int oldfd, int newfd, int patchfd)
+int ddelta_generate(int oldfd, int newfd, int patchfd, int blocksize)
 {
     struct ddelta_header file_header = {
         DDELTA_MAGIC,
         0};
     struct ddelta_entry_header header;
     unsigned char *old = NULL, *new = NULL;
-    off_t oldsize, newsize;
+    off_t scansize, oldsize, newsize;
+    uint32_t oldcrc, newcrc;
     saidx_t *I = NULL;
     off_t scan, pos = 0, len;
     off_t lastscan, lastpos, lastoffset;
@@ -191,6 +197,15 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
     FILE *pf = NULL;
     int result = 0;
 
+    newsize = read_file(newfd, &new);
+    if (newsize > INT32_MAX) {
+        result = -DDELTA_ENEWIO;
+        goto out;
+    } else if (newsize < 0) {
+        result = -DDELTA_ENEWIO;
+        goto out;
+    }
+
     oldsize = read_file(oldfd, &old);
     if (oldsize > INT32_MAX) {
         result = -DDELTA_EOLDIO;
@@ -200,22 +215,19 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
         goto out;
     }
 
-    if (((I = malloc((oldsize + 1) * sizeof(saidx_t))) == NULL)) {
-        result = -DDELTA_EALGO;
-        goto out;
+    if (newsize > oldsize) {
+        unsigned char *tmp = realloc(old, newsize);
+        if (tmp == NULL) {
+            result = -DDELTA_EOLDIO;
+            goto out;
+        }
+        memset(tmp + oldsize, 0, newsize - oldsize);
+        old = tmp;
     }
 
-    if (divsufsort(old, I, (int32_t) oldsize)) {
+    I = malloc((MAX(oldsize, newsize) + 1) * sizeof(saidx_t));
+    if (I == NULL) {
         result = -DDELTA_EALGO;
-        goto out;
-    }
-
-    newsize = read_file(newfd, &new);
-    if (newsize > INT32_MAX) {
-        result = -DDELTA_ENEWIO;
-        goto out;
-    } else if (newsize < 0) {
-        result = -DDELTA_ENEWIO;
         goto out;
     }
 
@@ -234,7 +246,22 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
     lastscan = 0;
     lastpos = 0;
     lastoffset = 0;
-    while (scan < newsize) {
+
+    if (blocksize > 0)
+        scansize = MIN(blocksize, newsize);
+    else
+        scansize = newsize;
+
+next:
+    oldcrc = 0;
+    newcrc = 0;
+
+    if (divsufsort(old, I, (int32_t) oldsize)) {
+        result = -DDELTA_EALGO;
+        goto out;
+    }
+
+    while (scan < scansize) {
         /* If we come across a large block of data that only differs
          * by less than 8 bytes, this loop will take a long time to
          * go past that block of data. We need to track the number of
@@ -243,14 +270,14 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
         off_t prev_len, prev_oldscore, prev_pos;
 
         oldscore = 0;
-        for (scsc = scan += len; scan < newsize; scan++) {
+        for (scsc = scan += len; scan < scansize; scan++) {
             const off_t fuzz = 8;
 
             prev_len = len;
             prev_oldscore = oldscore;
             prev_pos = pos;
 
-            len = search(I, old, oldsize, new + scan, newsize - scan,
+            len = search(I, old, oldsize, new + scan, scansize - scan,
                          0, oldsize - 1, &pos);
 
             for (; scsc < scan + len; scsc++)
@@ -277,7 +304,7 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
                 break;
         };
 
-        if ((len != oldscore) || (scan == newsize)) {
+        if ((len != oldscore) || (scan == scansize)) {
             s = 0;
             Sf = 0;
             lenf = 0;
@@ -292,7 +319,7 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
             };
 
             lenb = 0;
-            if (scan < newsize) {
+            if (scan < scansize) {
                 s = 0;
                 Sb = 0;
                 for (i = 1; (scan >= lastscan + i) && (pos >= i); i++) {
@@ -337,6 +364,7 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
 
             if (header.diff != lenf ||
                 header.extra != (scan - lenb) - (lastscan + lenf) ||
+                header.seek.value == DDELTA_FLUSH ||
                 header.seek.value != (pos - lenb) - (lastpos + lenf)) {
                 result = -DDELTA_EALGO;
                 goto out;
@@ -360,18 +388,34 @@ int ddelta_generate(int oldfd, int newfd, int patchfd)
                 }
             }
 
+            oldcrc = crc32(oldcrc, old + lastpos, lenf);
+            newcrc = crc32(newcrc, new + lastscan, lenf);
+
             lastscan = scan - lenb;
             lastpos = pos - lenb;
             lastoffset = pos - scan;
         };
     };
 
+    header.oldcrc = oldcrc;
+    header.newcrc = newcrc;
+    header.seek.value = DDELTA_FLUSH;
+    if ((result = ddelta_entry_header_write(&header, pf)) < 0)
+        goto out;
+
+
+    if (scan < newsize) {
+        memcpy(old + scansize - blocksize, new + scansize - blocksize, blocksize);
+        oldsize = MAX(oldsize, scansize);
+        scansize = MIN(scansize + blocksize, newsize);
+        goto next;
+    }
+
     memset(&header, 0, sizeof(header));
     if ((result = ddelta_entry_header_write(&header, pf)) < 0)
         goto out;
 
 out:
-
     if (pf != NULL) {
         int save_errno = errno;
 
@@ -396,10 +440,11 @@ int main(int argc, char *argv[])
     int oldfd;
     int newfd;
     int patchfd;
+    int blocksize;
     int err;
 
-    if (argc != 4) {
-        fprintf(stderr, "usage: %s oldfile newfile patchfile\n", argv[0]);
+    if (argc < 4) {
+        fprintf(stderr, "usage: %s oldfile newfile patchfile [blocksize]\n", argv[0]);
         return 1;
     }
 
@@ -420,7 +465,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    err = ddelta_generate(oldfd, newfd, patchfd);
+    blocksize = argc >= 5 ? atoi(argv[4]) : 0;
+    err = ddelta_generate(oldfd, newfd, patchfd, blocksize);
     if (err < 0) {
         fprintf(stderr, "An error %d occured: %s", -err, strerror(errno));
         return -err;

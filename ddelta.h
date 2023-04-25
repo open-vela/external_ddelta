@@ -23,10 +23,22 @@ struct ddelta_header {
  *
  * 1. 'diff' bytes of diff data
  * 2. 'extra' bytes of extra data
+ * 3. 'seek' offset to seek in old file
+ *    trigger flush when equals to INT32_MIN:
+ *    a. 'oldcrc' crc of old 'diff' bytes between flush
+ *    b. 'newcrc' crc of new 'diff' bytes between flush
  */
+#define DDELTA_FLUSH INT32_MIN
+
 struct ddelta_entry_header {
-    uint32_t diff;
-    uint32_t extra;
+    union {
+        uint32_t diff;
+        uint32_t oldcrc;
+    };
+    union {
+        uint32_t extra;
+        uint32_t newcrc;
+    };
     union {
         int32_t value;
         uint32_t raw;
@@ -63,7 +75,7 @@ enum ddelta_error {
  *
  * The old and new files must be seekable.
  */
-int ddelta_generate(int oldfd, int newfd, int patchfd);
+int ddelta_generate(int oldfd, int newfd, int patchfd, int blocksize);
 
 /**
  * Read a header from the given file.
@@ -82,6 +94,6 @@ int ddelta_header_read(struct ddelta_header *header, FILE *patchfd);
  *
  * The old file must be seekable.
  */
-int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, FILE *newfd);
+int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const char *new);
 
 #endif
