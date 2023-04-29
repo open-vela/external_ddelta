@@ -218,6 +218,10 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const
         if (entry.diff == 0 && entry.extra == 0 && entry.seek.value == 0) {
             fflush(newfd);
             fsync(fileno(newfd));
+            if (tmpfd) {
+                fclose(tmpfd);
+                unlink(tmpname);
+            }
             return bytes_written == header->new_file_size ? 0 : -DDELTA_EPATCHSHORT;
         }
 
