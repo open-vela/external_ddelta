@@ -246,7 +246,7 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const
             }
 
             copy_file(bakname, oldfd, start, bytes_written);
-
+            unlink(bakname);
             unlink(tmpname);
             newfd = tmpfd = fopen(tmpname, "wb");
             if (newfd == NULL)
