@@ -205,6 +205,7 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const
 
     if (stat(new, &st) >= 0 && S_ISDIR(st.st_mode)) {
         snprintf(tmpname, sizeof(tmpname), "%s/%s", new, "ddelta.tmp");
+        unlink(tmpname);
         newfd = tmpfd = fopen(tmpname, "wb");
     } else {
         newfd = fopen(new, "wb");
@@ -239,14 +240,20 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const
             fclose(tmpfd);
 
             snprintf(bakname, sizeof(bakname), "%s/%" PRIu32 ".tmp", new, entry.newcrc);
+
             if (oldcrc == entry.oldcrc) {
                 unlink(bakname);
                 if (rename(tmpname, bakname) < 0)
                     return -DDELTA_ENEWIO;
             }
 
-            copy_file(bakname, oldfd, start, bytes_written);
-            unlink(bakname);
+            if (access(bakname, F_OK) >= 0) {
+                err = copy_file(bakname, oldfd, start, bytes_written);
+                if (err < 0)
+                    return err;
+                unlink(bakname);
+            }
+
             unlink(tmpname);
             newfd = tmpfd = fopen(tmpname, "wb");
             if (newfd == NULL)
