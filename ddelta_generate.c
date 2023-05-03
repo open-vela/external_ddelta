@@ -389,7 +389,7 @@ next:
             }
 
             oldcrc = crc32(oldcrc, old + lastpos, lenf);
-            newcrc = crc32(newcrc, new + lastscan, lenf);
+            newcrc = crc32(newcrc, new + lastscan, scan - lenb - lastscan);
 
             lastscan = scan - lenb;
             lastpos = pos - lenb;
