@@ -159,11 +159,12 @@ static int copy_bytes(FILE *a, FILE *b, uint32_t bytes)
     return 0;
 }
 
-static int copy_file(const char *a, FILE *b, off_t start, off_t end)
+static int copy_file(const char *a, FILE *b, off_t start, off_t end, uint32_t *crc)
 {
+    unsigned char buf[DDELTA_BLOCK_SIZE];
     off_t origin = ftell(b);
+    int err = 0;
     FILE *af;
-    int err;
 
     if (fseek(b, start, SEEK_SET) < 0)
         return -DDELTA_EOLDIO;
@@ -172,7 +173,18 @@ static int copy_file(const char *a, FILE *b, off_t start, off_t end)
     if (af == NULL)
         return -DDELTA_ENEWIO;
 
-    err = copy_bytes(af, b, end - start);
+    while (start < end && err >= 0) {
+        uint32_t toread = MIN(sizeof(buf), end - start);
+
+        if (fread(&buf, toread, 1, af) < 1)
+            err = -DDELTA_ENEWIO;
+        else if (fwrite(&buf, toread, 1, b) < 1)
+            err = -DDELTA_EOLDIO;
+
+        *crc = crc32(*crc, buf, toread);
+        start += toread;
+    }
+
     fclose(af);
     if (err < 0)
         return err;
@@ -228,6 +240,7 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const
 
         if (entry.seek.value == DDELTA_FLUSH) {
             char bakname[PATH_MAX];
+            uint32_t newcrc = 0;
             off_t start;
 
             if (tmpfd == NULL)
@@ -248,9 +261,11 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const
             }
 
             if (access(bakname, F_OK) >= 0) {
-                err = copy_file(bakname, oldfd, start, bytes_written);
+                err = copy_file(bakname, oldfd, start, bytes_written, &newcrc);
                 if (err < 0)
                     return err;
+                if (newcrc != entry.newcrc)
+                    return -DDELTA_ENEWIO;
                 unlink(bakname);
             }
 

@@ -26,7 +26,7 @@ struct ddelta_header {
  * 3. 'seek' offset to seek in old file
  *    trigger flush when equals to INT32_MIN:
  *    a. 'oldcrc' crc of old 'diff' bytes between flush
- *    b. 'newcrc' crc of new 'diff' bytes between flush
+ *    b. 'newcrc' crc of new 'diff' and 'extra' bytes between flush
  */
 #define DDELTA_FLUSH INT32_MIN
 
