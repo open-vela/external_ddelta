@@ -253,6 +253,7 @@ int ddelta_generate(int oldfd, int newfd, int patchfd, int blocksize)
         scansize = newsize;
 
 next:
+    len = 0;
     oldcrc = 0;
     newcrc = 0;
 
