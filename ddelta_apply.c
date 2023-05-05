@@ -323,6 +323,9 @@ int main(int argc, char *argv[])
         return fprintf(stderr, "Not a ddelta file: %d(%d)", ret, errno), 1;
 
     ret = ddelta_apply(&header, patch, old, argv[2]);
+    fclose(old);
+    fclose(patch);
+
     if (ret < 0)
         return fprintf(stderr, "Cannot apply patch: %d(%d)\n", ret, errno), 1;
 
