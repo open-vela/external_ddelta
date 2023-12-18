@@ -268,6 +268,9 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const
                 if (newcrc != entry.newcrc)
                     return -DDELTA_ENEWIO;
                 unlink(bakname);
+            } else {
+                fprintf(stderr, "corrupt block?");
+                return -DDELTA_EOLDIO;
             }
 
             unlink(tmpname);
