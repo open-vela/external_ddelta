@@ -198,6 +198,34 @@ static int copy_file(const char *a, FILE *b, off_t start, off_t end, uint32_t *c
     return 0;
 }
 
+static int compute_crc32(FILE *a, off_t start, off_t end, uint32_t *crc)
+{
+    unsigned char buf[DDELTA_BLOCK_SIZE];
+    off_t origin = ftell(a);
+    int err = 0;
+
+    if (fseek(a, start, SEEK_SET) < 0)
+        return -DDELTA_EOLDIO;
+
+    while (start < end && err >= 0) {
+        uint32_t toread = MIN(sizeof(buf), end - start);
+
+        if (fread(&buf, toread, 1, a) < 1)
+            err = -DDELTA_EOLDIO;
+
+        *crc = crc32(*crc, buf, toread);
+        start += toread;
+    }
+
+    if (err < 0)
+        return err;
+
+    if (fseek(a, origin, SEEK_SET) < 0)
+        return -DDELTA_EOLDIO;
+
+    return 0;
+}
+
 /**
  * Apply a ddelta_apply in patchfd to oldfd, writing to newfd.
  *
@@ -269,8 +297,13 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const
                     return -DDELTA_ENEWIO;
                 unlink(bakname);
             } else {
-                fprintf(stderr, "corrupt block?");
-                return -DDELTA_EOLDIO;
+                err = compute_crc32(oldfd, start, bytes_written, &newcrc);
+                if (err < 0)
+                  return err;
+                if (newcrc != entry.newcrc) {
+                    fprintf(stderr, "corrupt block?\n");
+                    return -DDELTA_EOLDIO;
+                }
             }
 
             unlink(tmpname);
