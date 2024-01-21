@@ -43,6 +43,13 @@
 #define DDELTA_BLOCK_SIZE (32 * 1024)
 #endif
 
+#ifdef CONFIG_UTILS_DDELTA_DEBUG
+#  define ddelta_debug(fmt, ...) \
+      fprintf(stderr, __FILE__ ":%d:" fmt, __LINE__, ##__VA_ARGS__)
+#else
+#  define ddelta_debug(...)
+#endif
+
 static uint32_t ddelta_be32toh(uint32_t be32)
 {
 #if defined(__GNUC__) && defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -125,17 +132,23 @@ static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint32_t size, ui
                                           sizeof(old)) /
                                       sizeof(uchar_vector);
 
-        if (fread(&patch, 1, toread, patchfd) < toread)
+        if (fread(&patch, 1, toread, patchfd) < toread) {
+            ddelta_debug("apply_diff failed.\n");
             return -DDELTA_EPATCHIO;
-        if (fread(&old, 1, toread, oldfd) < toread)
+        }
+        if (fread(&old, 1, toread, oldfd) < toread) {
+            ddelta_debug("apply_diff failed.\n");
             return -DDELTA_EOLDIO;
+        }
 
         *oldcrc = crc32(*oldcrc, (const unsigned char *)old, toread);
         for (i = 0; i < items_to_add; i++)
             old[i] += patch[i];
 
-        if (fwrite(&old, 1, toread, newfd) < toread)
+        if (fwrite(&old, 1, toread, newfd) < toread) {
+            ddelta_debug("apply_diff failed.\n");
             return -DDELTA_ENEWIO;
+        }
 
         size -= toread;
     }
@@ -151,8 +164,10 @@ static int copy_bytes(FILE *a, FILE *b, uint32_t bytes)
 
         if (fread(&buf, toread, 1, a) < 1)
             return -DDELTA_EPATCHIO;
-        if (fwrite(&buf, toread, 1, b) < 1)
+        if (fwrite(&buf, toread, 1, b) < 1) {
+            ddelta_debug("copy_bytes failed.\n");
             return -DDELTA_ENEWIO;
+        }
 
         bytes -= toread;
     }
@@ -166,20 +181,28 @@ static int copy_file(const char *a, FILE *b, off_t start, off_t end, uint32_t *c
     int err = 0;
     FILE *af;
 
-    if (fseek(b, start, SEEK_SET) < 0)
+    if (fseek(b, start, SEEK_SET) < 0) {
+        ddelta_debug("copy_file failed.\n");
         return -DDELTA_EOLDIO;
+    }
 
     af = fopen(a, "rb");
-    if (af == NULL)
+    if (af == NULL) {
+        ddelta_debug("copy_file failed.\n");
         return -DDELTA_ENEWIO;
+    }
 
     while (start < end && err >= 0) {
         uint32_t toread = MIN(sizeof(buf), end - start);
 
-        if (fread(&buf, toread, 1, af) < 1)
+        if (fread(&buf, toread, 1, af) < 1) {
+            ddelta_debug("copy_file failed.\n");
             err = -DDELTA_ENEWIO;
-        else if (fwrite(&buf, toread, 1, b) < 1)
+        }
+        else if (fwrite(&buf, toread, 1, b) < 1) {
+            ddelta_debug("copy_file failed.\n");
             err = -DDELTA_EOLDIO;
+        }
 
         *crc = crc32(*crc, buf, toread);
         start += toread;
@@ -189,11 +212,15 @@ static int copy_file(const char *a, FILE *b, off_t start, off_t end, uint32_t *c
     if (err < 0)
         return err;
 
-    if (fflush(b) < 0 || fsync(fileno(b)) < 0)
+    if (fflush(b) < 0 || fsync(fileno(b)) < 0) {
+        ddelta_debug("copy_file failed.\n");
         return -DDELTA_EOLDIO;
+    }
 
-    if (fseek(b, origin, SEEK_SET) < 0)
+    if (fseek(b, origin, SEEK_SET) < 0) {
+        ddelta_debug("copy_file failed.\n");
         return -DDELTA_EOLDIO;
+    }
 
     return 0;
 }
@@ -204,14 +231,18 @@ static int compute_crc32(FILE *a, off_t start, off_t end, uint32_t *crc)
     off_t origin = ftell(a);
     int err = 0;
 
-    if (fseek(a, start, SEEK_SET) < 0)
+    if (fseek(a, start, SEEK_SET) < 0) {
+        ddelta_debug("compute_crc32 failed.\n");
         return -DDELTA_EOLDIO;
+    }
 
     while (start < end && err >= 0) {
         uint32_t toread = MIN(sizeof(buf), end - start);
 
-        if (fread(&buf, toread, 1, a) < 1)
+        if (fread(&buf, toread, 1, a) < 1) {
+            ddelta_debug("compute_crc32 failed.\n");
             err = -DDELTA_EOLDIO;
+        }
 
         *crc = crc32(*crc, buf, toread);
         start += toread;
@@ -220,8 +251,10 @@ static int compute_crc32(FILE *a, off_t start, off_t end, uint32_t *crc)
     if (err < 0)
         return err;
 
-    if (fseek(a, origin, SEEK_SET) < 0)
+    if (fseek(a, origin, SEEK_SET) < 0) {
+        ddelta_debug("compute_crc32 failed.\n");
         return -DDELTA_EOLDIO;
+    }
 
     return 0;
 }
@@ -252,8 +285,10 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const
         tmpfd = NULL;
     }
 
-    if (newfd == NULL)
+    if (newfd == NULL) {
+        ddelta_debug("ddelta_apply failed.\n");
         return -DDELTA_ENEWIO;
+    }
 
     while (ddelta_entry_header_read(&entry, patchfd) == 0) {
         if (entry.diff == 0 && entry.extra == 0 && entry.seek.value == 0) {
@@ -285,16 +320,20 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const
 
             if (oldcrc == entry.oldcrc) {
                 unlink(bakname);
-                if (rename(tmpname, bakname) < 0)
+                if (rename(tmpname, bakname) < 0) {
+                    ddelta_debug("ddelta_apply failed.\n");
                     return -DDELTA_ENEWIO;
+                }
             }
 
             if (access(bakname, F_OK) >= 0) {
                 err = copy_file(bakname, oldfd, start, bytes_written, &newcrc);
                 if (err < 0)
                     return err;
-                if (newcrc != entry.newcrc)
+                if (newcrc != entry.newcrc) {
+                    ddelta_debug("ddelta_apply failed.\n");
                     return -DDELTA_ENEWIO;
+                }
                 unlink(bakname);
             } else {
                 err = compute_crc32(oldfd, start, bytes_written, &newcrc);
@@ -308,8 +347,10 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const
 
             unlink(tmpname);
             newfd = tmpfd = fopen(tmpname, "wb");
-            if (newfd == NULL)
+            if (newfd == NULL) {
+                ddelta_debug("ddelta_apply failed.\n");
                 return -DDELTA_ENEWIO;
+            }
 
             oldcrc = 0;
             continue;
@@ -324,6 +365,7 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const
 
         /* Skip remaining bytes */
         if (fseek(oldfd, entry.seek.value, SEEK_CUR) < 0) {
+            ddelta_debug("ddelta_apply failed.\n");
             return -DDELTA_EOLDIO;
         }
 
