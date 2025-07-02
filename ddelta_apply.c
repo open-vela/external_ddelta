@@ -193,7 +193,7 @@ static int copy_file(const char *a, FILE *b, off_t start, off_t end, uint32_t *c
     }
 
     while (start < end && err >= 0) {
-        uint32_t toread = MIN(sizeof(buf), end - start);
+        size_t toread = MIN(sizeof(buf), (size_t)(end - start));
 
         if (fread(&buf, toread, 1, af) < 1) {
             ddelta_debug("copy_file failed.\n");
@@ -237,7 +237,7 @@ static int compute_crc32(FILE *a, off_t start, off_t end, uint32_t *crc)
     }
 
     while (start < end && err >= 0) {
-        uint32_t toread = MIN(sizeof(buf), end - start);
+        size_t toread = MIN(sizeof(buf), (size_t)(end - start));
 
         if (fread(&buf, toread, 1, a) < 1) {
             ddelta_debug("compute_crc32 failed.\n");
