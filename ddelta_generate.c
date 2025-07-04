@@ -4,7 +4,7 @@
  * All rights reserved
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted providing that the following conditions 
+ * modification, are permitted providing that the following conditions
  * are met:
  * 1. Redistributions of source code must retain the above copyright
  *    notice, this list of conditions and the following disclaimer.
@@ -93,7 +93,7 @@ static uint64_t ddelta_htobe64(uint64_t host)
 
 static uint32_t ddelta_to_unsigned(int32_t i)
 {
-    return i >= 0 ? (uint32_t) i : ~(uint32_t)(-i) + 1;
+    return i >= 0 ? (uint32_t) i : ~(uint32_t) (-i) + 1;
 }
 
 static int ddelta_header_write(struct ddelta_header *header, FILE *file)
@@ -360,7 +360,7 @@ next:
             }
 
             header.diff = (uint32_t) lenf;
-            header.extra = (uint32_t)((scan - lenb) - (lastscan + lenf));
+            header.extra = (uint32_t) ((scan - lenb) - (lastscan + lenf));
             header.seek.value = (pos - lenb) - (lastpos + lenf);
 
             if (header.diff != lenf ||
@@ -403,7 +403,6 @@ next:
     header.seek.value = DDELTA_FLUSH;
     if ((result = ddelta_entry_header_write(&header, pf)) < 0)
         goto out;
-
 
     if (scan < newsize) {
         memcpy(old + scansize - blocksize, new + scansize - blocksize, blocksize);
