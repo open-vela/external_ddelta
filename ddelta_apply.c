@@ -1,5 +1,5 @@
 /* ddelta_apply.c - A sane reimplementation of bspatch
- * 
+ *
  * Copyright (C) 2017 Julian Andres Klode <jak@debian.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,10 +27,10 @@
 #include "ddelta.h"
 
 #include <errno.h>
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <inttypes.h>
 #include <sys/stat.h>
 #include <zlib.h>
 
@@ -44,10 +44,10 @@
 #endif
 
 #ifdef CONFIG_UTILS_DDELTA_DEBUG
-#  define ddelta_debug(fmt, ...) \
-      fprintf(stderr, __FILE__ ":%d:" fmt, __LINE__, ##__VA_ARGS__)
+#define ddelta_debug(fmt, ...) \
+    fprintf(stderr, __FILE__ ":%d:" fmt, __LINE__, ##__VA_ARGS__)
 #else
-#  define ddelta_debug(...)
+#define ddelta_debug(...)
 #endif
 
 static uint32_t ddelta_be32toh(uint32_t be32)
@@ -141,7 +141,7 @@ static int apply_diff(FILE *patchfd, FILE *oldfd, FILE *newfd, uint32_t size, ui
             return -DDELTA_EOLDIO;
         }
 
-        *oldcrc = crc32(*oldcrc, (const unsigned char *)old, toread);
+        *oldcrc = crc32(*oldcrc, (const unsigned char *) old, toread);
         for (i = 0; i < items_to_add; i++)
             old[i] += patch[i];
 
@@ -193,13 +193,12 @@ static int copy_file(const char *a, FILE *b, off_t start, off_t end, uint32_t *c
     }
 
     while (start < end && err >= 0) {
-        size_t toread = MIN(sizeof(buf), (size_t)(end - start));
+        size_t toread = MIN(sizeof(buf), (size_t) (end - start));
 
         if (fread(&buf, toread, 1, af) < 1) {
             ddelta_debug("copy_file failed.\n");
             err = -DDELTA_ENEWIO;
-        }
-        else if (fwrite(&buf, toread, 1, b) < 1) {
+        } else if (fwrite(&buf, toread, 1, b) < 1) {
             ddelta_debug("copy_file failed.\n");
             err = -DDELTA_EOLDIO;
         }
@@ -237,7 +236,7 @@ static int compute_crc32(FILE *a, off_t start, off_t end, uint32_t *crc)
     }
 
     while (start < end && err >= 0) {
-        size_t toread = MIN(sizeof(buf), (size_t)(end - start));
+        size_t toread = MIN(sizeof(buf), (size_t) (end - start));
 
         if (fread(&buf, toread, 1, a) < 1) {
             ddelta_debug("compute_crc32 failed.\n");
@@ -338,7 +337,7 @@ int ddelta_apply(struct ddelta_header *header, FILE *patchfd, FILE *oldfd, const
             } else {
                 err = compute_crc32(oldfd, start, bytes_written, &newcrc);
                 if (err < 0)
-                  return err;
+                    return err;
                 if (newcrc != entry.newcrc) {
                     fprintf(stderr, "corrupt block?\n");
                     return -DDELTA_EOLDIO;
