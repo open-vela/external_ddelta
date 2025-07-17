@@ -238,6 +238,8 @@ int ddelta_generate(int oldfd, int newfd, int patchfd, int blocksize)
     }
 
     file_header.new_file_size = (uint64_t) newsize;
+    file_header.old_file_size = (uint64_t) oldsize;
+    file_header.old_file_crc = crc32(0, old, oldsize);
     if ((result = ddelta_header_write(&file_header, pf)) < 0)
         goto out;
 
