@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 /* Fork of BSDIFF that does not compress ctrl, diff, extra blocks */
-#define DDELTA_MAGIC "DDELTA50"
+#define DDELTA_MAGIC "DDELTA60"
 
 /**
  * A ddelta file has the following format:
@@ -16,6 +16,9 @@
 struct ddelta_header {
     char magic[8];
     uint64_t new_file_size;
+    uint64_t old_file_size;
+    uint32_t old_file_crc;
+    char padding[4]; /* align to 64 bits */
 };
 
 /**
@@ -46,7 +49,7 @@ struct ddelta_entry_header {
 };
 
 /* Static assertions that the headers have the correct size. */
-typedef int ddelta_assert_header_size[sizeof(struct ddelta_header) == 16 ? 1 : -1];
+typedef int ddelta_assert_header_size[sizeof(struct ddelta_header) == 32 ? 1 : -1];
 typedef int ddelta_assert_entry_header_size[sizeof(struct ddelta_entry_header) == 12 ? 1 : -1];
 
 /**
