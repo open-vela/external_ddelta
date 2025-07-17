@@ -43,12 +43,8 @@
 #define DDELTA_BLOCK_SIZE (32 * 1024)
 #endif
 
-#ifdef CONFIG_UTILS_DDELTA_DEBUG
 #define ddelta_debug(fmt, ...) \
     fprintf(stderr, __FILE__ ":%d:" fmt, __LINE__, ##__VA_ARGS__)
-#else
-#define ddelta_debug(...)
-#endif
 
 static uint32_t ddelta_be32toh(uint32_t be32)
 {
@@ -382,7 +378,7 @@ int main(int argc, char *argv[])
     FILE *patch;
     struct ddelta_header header;
 
-    if (argc != 4) {
+    if (argc < 4) {
         fprintf(stderr, "usage: %s oldfile newfile|tmpdir patchfile\n", argv[0]);
         return 1;
     }
@@ -399,7 +395,15 @@ int main(int argc, char *argv[])
     if (ret < 0)
         return fprintf(stderr, "Not a ddelta file: %d(%d)", ret, errno), 1;
 
-    ret = ddelta_apply(&header, patch, old, argv[2]);
+    if (argc == 5 && !strcmp("precheck", argv[4])) {
+        uint32_t oldcrc = 0;
+        ret = (compute_crc32(old, 0, header.old_file_size, &oldcrc) < 0 ||
+               header.old_file_crc != oldcrc)
+            ? fprintf(stderr, "Precheck failed 0x%" PRIx32 "\n", oldcrc),
+        1 : 0;
+    } else {
+        ret = ddelta_apply(&header, patch, old, argv[2]);
+    }
     fclose(old);
     fclose(patch);
 
