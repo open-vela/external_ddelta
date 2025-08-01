@@ -182,7 +182,10 @@ int ddelta_generate(int oldfd, int newfd, int patchfd, int blocksize)
 {
     struct ddelta_header file_header = {
         DDELTA_MAGIC,
-        0};
+        0,
+        0,
+        0,
+        {0}};
     struct ddelta_entry_header header;
     unsigned char *old = NULL, *new = NULL;
     off_t scansize, oldsize, newsize;
