@@ -400,7 +400,7 @@ int main(int argc, char *argv[])
         ret = (compute_crc32(old, 0, header.old_file_size, &oldcrc) < 0 ||
                header.old_file_crc != oldcrc)
             ? fprintf(stderr, "Precheck failed 0x%" PRIx32 "\n", oldcrc),
-        1 : 0;
+        -DDELTA_PRECHECK : 0;
     } else {
         ret = ddelta_apply(&header, patch, old, argv[2]);
     }
