@@ -95,6 +95,8 @@ int ddelta_header_read(struct ddelta_header *header, FILE *file)
         return -DDELTA_EMAGIC;
 
     header->new_file_size = ddelta_be64toh(header->new_file_size);
+    header->old_file_size = ddelta_be64toh(header->old_file_size);
+    header->old_file_crc = ddelta_be32toh(header->old_file_crc);
     return 0;
 }
 

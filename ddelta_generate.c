@@ -99,6 +99,8 @@ static uint32_t ddelta_to_unsigned(int32_t i)
 static int ddelta_header_write(struct ddelta_header *header, FILE *file)
 {
     header->new_file_size = ddelta_htobe64(header->new_file_size);
+    header->old_file_size = ddelta_htobe64(header->old_file_size);
+    header->old_file_crc = ddelta_htobe32(header->old_file_crc);
 
     if (fwrite(header, sizeof(*header), 1, file) < 1)
         return -DDELTA_EPATCHIO;
